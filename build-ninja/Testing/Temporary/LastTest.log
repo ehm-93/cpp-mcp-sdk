@@ -1,0 +1,18 @@
+Start testing: Jul 16 19:10 Pacific Daylight Time
+----------------------------------------------------------
+1/1 Testing: mcp-sdk-tests
+1/1 Test: mcp-sdk-tests
+Command: "C:/Users/emmet/com/github/ehm-93/cpp-mcp-sdk/build-ninja/tests/mcp-sdk-tests.exe"
+Directory: C:/Users/emmet/com/github/ehm-93/cpp-mcp-sdk/build-ninja/tests
+"mcp-sdk-tests" start time: Jul 16 19:10 Pacific Daylight Time
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"mcp-sdk-tests" end time: Jul 16 19:10 Pacific Daylight Time
+"mcp-sdk-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Jul 16 19:10 Pacific Daylight Time

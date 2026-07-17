@@ -1,0 +1,7 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(nlohmann_json 3.11)
+include("${CMAKE_CURRENT_LIST_DIR}/mcp-cpp-targets.cmake")
+set_property(TARGET mcp::sdk APPEND PROPERTY
+  INTERFACE_LINK_LIBRARIES nlohmann_json::nlohmann_json)
