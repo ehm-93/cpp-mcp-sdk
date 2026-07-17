@@ -11,6 +11,7 @@ Client::Client(Transport& transport, Implementation client_info)
 void Client::send(const Json& message) { transport_.write(message.dump()); }
 
 Json Client::initialize(Json capabilities) {
+  // initialize is an ordinary request followed by the one-way ready signal.
   Json result = request("initialize", {{"protocolVersion", protocol_version},
                                         {"capabilities", std::move(capabilities)},
                                         {"clientInfo", client_info_}});
@@ -19,6 +20,8 @@ Json Client::initialize(Json capabilities) {
 }
 
 Json Client::request(const std::string& method, Json params) {
+  // Holding this lock while waiting deliberately limits the synchronous client
+  // to one in-flight request. That avoids needing a response-routing thread.
   const std::scoped_lock lock(request_mutex_);
   const auto id = next_id_++;
   send({{"jsonrpc", "2.0"}, {"id", id}, {"method", method}, {"params", std::move(params)}});
@@ -51,6 +54,7 @@ Json Client::receive_response(std::int64_t expected_id) {
     }
     if (!message.is_object() || message.value("jsonrpc", "") != "2.0") continue;
 
+    // A response has an ID plus either result or error.
     if (message.contains("id") && (message.contains("result") || message.contains("error"))) {
       if (message.at("id") != expected_id) continue;
       if (message.contains("error")) {
@@ -61,6 +65,8 @@ Json Client::receive_response(std::int64_t expected_id) {
       return message.value("result", Json::object());
     }
 
+    // Messages with a method are inbound notifications or requests that must be
+    // handled while the client is waiting for its own response.
     if (!message.contains("method") || !message.at("method").is_string()) continue;
     const auto method = message.at("method").get<std::string>();
     const auto params = message.value("params", Json::object());
@@ -69,6 +75,7 @@ Json Client::receive_response(std::int64_t expected_id) {
       continue;
     }
 
+    // An inbound method with an ID is a server-to-client request.
     const auto id = message.at("id");
     try {
       if (!request_handler_) throw RpcError(ErrorCode::method_not_found, "client method not supported");
@@ -86,4 +93,3 @@ Json Client::receive_response(std::int64_t expected_id) {
 }
 
 }  // namespace mcp
-

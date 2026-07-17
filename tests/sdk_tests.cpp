@@ -8,15 +8,19 @@
 
 namespace {
 
+// A compact request builder keeps each test focused on its MCP payload.
 mcp::Json request(std::int64_t id, std::string method, mcp::Json params = mcp::Json::object()) {
   return {{"jsonrpc", "2.0"}, {"id", id}, {"method", std::move(method)}, {"params", std::move(params)}};
 }
 
 void expect(bool condition, const char* message) {
+  // Unlike assert(), this check remains active in Release builds.
   if (!condition) throw std::runtime_error(message);
 }
 
 void test_server() {
+  // Register one of each server primitive, then exercise the JSON-RPC boundary
+  // through Server::handle without involving real process I/O.
   mcp::Server server({.server_info = {.name = "test", .version = "1"}});
   server.add_tool(
       {.name = "echo", .description = "Echo input", .input_schema = {{"type", "object"}}},
@@ -75,6 +79,7 @@ void test_server() {
 }
 
 void test_stdio_transport() {
+  // Injected streams make framing and flushing behavior deterministic.
   std::istringstream input("\n{\"jsonrpc\":\"2.0\"}\n");
   std::ostringstream output;
   mcp::StdioTransport transport(input, output);

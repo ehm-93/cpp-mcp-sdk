@@ -3,5 +3,6 @@
 include(CMakeFindDependencyMacro)
 find_dependency(nlohmann_json 3.11)
 include("${CMAKE_CURRENT_LIST_DIR}/mcp-cpp-targets.cmake")
+# Restore the public header-only dependency for installed consumers.
 set_property(TARGET mcp::sdk APPEND PROPERTY
   INTERFACE_LINK_LIBRARIES nlohmann_json::nlohmann_json)

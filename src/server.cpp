@@ -11,11 +11,13 @@
 namespace mcp {
 namespace {
 
+// MCP permits string or integer IDs, but not JSON-RPC's null ID.
 bool valid_id(const Json& id) {
   return id.is_string() || id.is_number_integer();
 }
 
 const Json& object_params(const Json& message) {
+  // Reusing one immutable empty object avoids allocating for omitted params.
   static const Json empty = Json::object();
   if (!message.contains("params")) return empty;
   const auto& params = message.at("params");
@@ -36,6 +38,7 @@ Server& Server::add_tool(Tool tool, ToolHandler handler) {
   }
   if (!tool.input_schema.is_object()) throw std::invalid_argument("tool input schema must be an object");
   if (!handler) throw std::invalid_argument("tool handler must be callable");
+  // Save the key before moving the definition into its registry entry.
   const auto name = tool.name;
   const std::scoped_lock lock(registry_mutex_);
   if (!tools_.emplace(name, ToolEntry{std::move(tool), std::move(handler)}).second) {
@@ -67,6 +70,7 @@ Server& Server::add_prompt(Prompt prompt, PromptHandler handler) {
 }
 
 Json Server::capabilities() const {
+  // A primitive is advertised only when the server actually registered one.
   Json result = Json::object();
   const std::scoped_lock lock(registry_mutex_);
   if (!tools_.empty()) result["tools"] = {{"listChanged", true}};
@@ -76,6 +80,7 @@ Json Server::capabilities() const {
 }
 
 std::string Server::id_key(const Json& id) {
+  // Prefixes prevent the string "1" and numeric 1 from colliding.
   return id.is_string() ? "s:" + id.get<std::string>() : "n:" + id.dump();
 }
 
@@ -90,6 +95,8 @@ Json Server::failure(const Json& id, ErrorCode code, const std::string& message,
 }
 
 void Server::cancel(const Json& params) {
+  // Cancellation notifications are best-effort; malformed or completed IDs do
+  // not receive a response because notifications are one-way.
   if (!params.is_object() || !params.contains("requestId") || !valid_id(params.at("requestId"))) return;
   const auto key = id_key(params.at("requestId"));
   const std::scoped_lock lock(requests_mutex_);
@@ -106,6 +113,8 @@ Json Server::dispatch(const std::string& method, const Json& params, const Json&
         !params.contains("capabilities") || !params.at("capabilities").is_object()) {
       throw RpcError(ErrorCode::invalid_params, "invalid initialize parameters");
     }
+    // Version negotiation chooses our supported revision when the requested
+    // value differs; the client decides whether it can accept that revision.
     const auto requested = params.at("protocolVersion").get<std::string>();
     const auto negotiated = requested == options_.protocol_version ? requested : options_.protocol_version;
     initialize_seen_.store(true);
@@ -146,6 +155,8 @@ Json Server::dispatch(const std::string& method, const Json& params, const Json&
     }
     const Json arguments = params.value("arguments", Json::object());
     if (!arguments.is_object()) throw RpcError(ErrorCode::invalid_params, "tool arguments must be an object");
+    // Tool execution failures belong in a ToolResult so the model can recover.
+    // Lookup/shape failures above remain protocol-level invalid-params errors.
     try {
       return Json(handler(arguments, stop_token));
     } catch (const RpcError& error) {
@@ -211,6 +222,8 @@ Json Server::dispatch(const std::string& method, const Json& params, const Json&
 }
 
 std::optional<Json> Server::handle(const Json& message) {
+  // Batches and response-shaped objects are rejected here because this entry
+  // point accepts one inbound request or notification at a time.
   if (!message.is_object() || message.value("jsonrpc", "") != "2.0" ||
       !message.contains("method") || !message.at("method").is_string()) {
     return failure(nullptr, ErrorCode::invalid_request, "invalid JSON-RPC request");
@@ -230,6 +243,8 @@ std::optional<Json> Server::handle(const Json& message) {
     }
 
     const Json id = message.at("id");
+    // Register before dispatch so a concurrent cancellation notification can
+    // signal the handler's stop token.
     std::stop_source source;
     const auto key = id_key(id);
     {
@@ -239,6 +254,7 @@ std::optional<Json> Server::handle(const Json& message) {
       }
     }
 
+    // Scope cleanup ensures exceptions cannot leave stale active request IDs.
     struct EraseRequest {
       Server& server;
       std::string key;
@@ -260,6 +276,7 @@ std::optional<Json> Server::handle(const Json& message) {
 
 void Server::serve(Transport& transport) {
   std::vector<std::future<void>> pending;
+  // Transport implementations need not coordinate concurrent server workers.
   std::mutex transport_mutex;
   while (const auto wire = transport.read()) {
     Json message;
@@ -275,6 +292,8 @@ void Server::serve(Transport& transport) {
     if (message.is_object() && !message.contains("id")) {
       static_cast<void>(handle(message));
     } else {
+      // Retire finished futures periodically so a long-lived connection does
+      // not retain one future object for every request it has ever handled.
       pending.erase(std::remove_if(pending.begin(), pending.end(), [](std::future<void>& task) {
                       return task.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
                     }), pending.end());
@@ -287,6 +306,7 @@ void Server::serve(Transport& transport) {
       }));
     }
   }
+  // EOF closes intake, but already accepted requests receive time to finish.
   for (auto& task : pending) task.wait();
 }
 

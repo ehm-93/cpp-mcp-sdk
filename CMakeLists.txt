@@ -9,6 +9,8 @@ option(MCP_CPP_BUILD_EXAMPLES "Build mcp-cpp-sdk examples" ON)
 option(MCP_CPP_BUILD_TESTS "Build mcp-cpp-sdk tests" ON)
 option(MCP_CPP_FETCH_DEPENDENCIES "Fetch missing dependencies" ON)
 
+# Prefer a package supplied by the consumer; FetchContent is a convenience for
+# standalone builds and can be disabled for fully offline/package-manager use.
 find_package(nlohmann_json 3.11 QUIET)
 if(NOT nlohmann_json_FOUND)
   if(NOT MCP_CPP_FETCH_DEPENDENCIES)
@@ -29,7 +31,10 @@ add_library(mcp-cpp
 )
 add_library(mcp::sdk ALIAS mcp-cpp)
 
+# C++20 is part of the public contract because callbacks expose std::stop_token.
 target_compile_features(mcp-cpp PUBLIC cxx_std_20)
+# nlohmann_json is header-only. Copying its build include path avoids exporting
+# a fetched dependency target; the installed config reconnects the real target.
 get_target_property(MCP_CPP_JSON_INCLUDE_DIRS
   nlohmann_json::nlohmann_json INTERFACE_INCLUDE_DIRECTORIES)
 target_include_directories(mcp-cpp
