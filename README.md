@@ -92,5 +92,4 @@ untrusted unless the server itself is trusted.
 
 ## License
 
-MIT
-
+MIT-0
